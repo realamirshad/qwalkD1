@@ -83,6 +83,27 @@ suite: norm preservation, the Hadamard peak, no wraparound, the initial state,
 and coin unitarity. Regenerate it with `python tools/make_standalone_notebook.py`
 (this clears outputs, so re-execute afterwards).
 
+## Physics interface notebook (handoff deliverable)
+
+`quantum_walk_physics_interface.ipynb` implements the standardized
+`quantum_walk_1d` / `quantum_walk_2d` interface required by the physics-team
+handoff spec ([`docs/physics-handoff-spec.pdf`](docs/physics-handoff-spec.pdf)),
+so an ML pipeline (this project's or another team's) can call the walk through
+a stable `params -> {positions, probabilities}` contract instead of the
+internal wiring `quantum_walk_features.ipynb` uses. Also fully self-contained;
+only depends on numpy.
+
+```bash
+.venv/bin/jupyter lab quantum_walk_physics_interface.ipynb
+```
+
+`quantum_walk_1d` is implemented and validated (normalization, determinism,
+symmetry, phase sensitivity — see the notebook's own validation section).
+`quantum_walk_2d` is a **stub** — 2D physics isn't built yet in this project
+(see `docs/COMPLIANCE.md`) — it raises `NotImplementedError` but matches the
+spec's exact signature, so calling code can already be written against it.
+Regenerate with `python tools/make_physics_interface_notebook.py`.
+
 ## Package demo notebook
 
 `qwalk_demo.ipynb` walks the whole pipeline with plots — position distributions
@@ -131,7 +152,7 @@ S           : coin |0> moves left, coin |1> moves right
 P_T(x)      = sum_c |<x, c | psi_T>|^2
 ```
 
-Parameter ranges: `theta in [0, pi]`, `phi in [0, 2pi]`, `alpha in [0, pi/2]`,
+Parameter ranges: `theta in [0, pi]`, `phi in [0, 2pi]`, `alpha in [0, pi]`,
 `beta in [0, 2pi]`.
 
 The lattice grows with the walk: it starts as a single site and gains two per

@@ -23,7 +23,7 @@ def _params(n: int, seed: int = 0) -> tuple[np.ndarray, ...]:
     return (
         rng.uniform(0.0, np.pi, n),
         rng.uniform(0.0, 2.0 * np.pi, n),
-        rng.uniform(0.0, np.pi / 2.0, n),
+        rng.uniform(0.0, np.pi, n),
         rng.uniform(0.0, 2.0 * np.pi, n),
     )
 
@@ -131,7 +131,7 @@ def test_coin_is_unitary_over_the_range() -> None:
     """C(a, b) as specified is unitary for all (alpha, beta) in range."""
     rng = np.random.default_rng(7)
     for a, b in zip(
-        rng.uniform(0.0, np.pi / 2.0, 32), rng.uniform(0.0, 2.0 * np.pi, 32)
+        rng.uniform(0.0, np.pi, 32), rng.uniform(0.0, 2.0 * np.pi, 32)
     ):
         C = np.array(
             [

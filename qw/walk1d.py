@@ -27,7 +27,7 @@ PARAM_NAMES: tuple[str, ...] = ("theta", "phi", "alpha", "beta")
 PARAM_RANGES: tuple[tuple[float, float], ...] = (
     (0.0, np.pi),        # theta
     (0.0, 2.0 * np.pi),  # phi
-    (0.0, np.pi / 2.0),  # alpha
+    (0.0, np.pi),        # alpha
     (0.0, 2.0 * np.pi),  # beta
 )
 

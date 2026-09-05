@@ -51,7 +51,7 @@ $$|\\text{coin}_0\\rangle = \\cos(\\theta/2)|0\\rangle + e^{i\\phi}\\sin(\\theta
 $$|\\psi_{t+1}\\rangle = S\\,C\\,|\\psi_t\\rangle, \\qquad P_T(x) = \\sum_c |\\langle x,c|\\psi_T\\rangle|^2$$
 
 Coin $|0\\rangle$ moves left, coin $|1\\rangle$ moves right. Ranges:
-$\\theta\\in[0,\\pi]$, $\\phi\\in[0,2\\pi]$, $\\alpha\\in[0,\\pi/2]$, $\\beta\\in[0,2\\pi]$.
+$\\theta\\in[0,\\pi]$, $\\phi\\in[0,2\\pi]$, $\\alpha\\in[0,\\pi]$, $\\beta\\in[0,2\\pi]$.
 """))
 
 cells.append(md("## 1. Setup"))
@@ -69,7 +69,7 @@ from qw.walk1d import (
     extract_features,
     position_axis,
     position_probabilities,
-    run_walk_1d,
+    run_qw_1d,
 )
 
 plt.rcParams.update({"figure.figsize": (9, 4), "figure.dpi": 110, "axes.grid": True,
@@ -181,7 +181,7 @@ at $x=-20$ for $T=30$.
 cells.append(code("""
 T = 30
 zero = np.array([0.0])
-psi_h = run_walk_1d(zero, zero, np.array([np.pi / 4]), zero, T)
+psi_h = run_qw_1d(zero, zero, np.array([np.pi / 4]), zero, T)
 p_h = position_probabilities(psi_h)[0]
 x_h = position_axis(p_h.shape[0])
 peak = x_h[np.argmax(p_h)]

@@ -112,17 +112,23 @@ features the rubric never asks for, which is the cheapest thing to fix here.
 
 ## Note on parameter ranges
 
-The PDF **does not prescribe** `θ ∈ [0,π]`, `φ ∈ [0,2π]`, `α ∈ [0,π/2]`,
-`β ∈ [0,2π]`. §8 only requires that a scaling method be defined, applied before
-the walk, and reported. Our ranges are a defensible choice and are logged on
-every run, which is what §8 asks for — but they are ours, not the challenge's.
-An alternative such as `α ∈ [0,π]` is equally admissible.
+The original challenge PDF **does not prescribe** `θ ∈ [0,π]`, `φ ∈ [0,2π]`,
+`α ∈ [0,π/2 or π]`, `β ∈ [0,2π]`. §8 only requires that a scaling method be
+defined, applied before the walk, and reported.
 
-This also revises an earlier criticism of `first.ipynb`: its `α ∈ [0,π]` is
-**not** a spec violation. Its real problems stand — the walker starts at the
-lattice edge so `Σ_x P_T(x)` decays to a median of 0.17 (violating acceptance
-criterion 6), and its permutation search selects on the test set (violating
-criterion 16).
+A separate document — the physics team's handoff/acceptance spec for
+`Main_Code.ipynb` — **does** fix these ranges, including `α ∈ [0,π]`. Since
+that document is the authoritative interface contract for this project, we
+switched from our earlier (self-chosen) `α ∈ [0,π/2]` to `α ∈ [0,π]` to match
+it. See [`quantum_walk_physics_interface.ipynb`](../quantum_walk_physics_interface.ipynb)
+for the standardized `quantum_walk_1d`/`quantum_walk_2d` functions built to
+that contract.
+
+This also revises an earlier criticism of `first.ipynb`: its `α ∈ [0,π]` was
+never a spec violation, and is in fact the range this project now uses too.
+Its real problems stand — the walker starts at the lattice edge so
+`Σ_x P_T(x)` decays to a median of 0.17 (violating acceptance criterion 6),
+and its permutation search selects on the test set (violating criterion 16).
 
 Conversely, `first.ipynb`'s feature set — FFT-based interference, a
 gradient-based momentum proxy, `⟨x²⟩`, and a spread measure — maps onto
