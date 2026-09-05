@@ -51,7 +51,28 @@ Do not pick the permutation by test-set score. On this split the CV-chosen
 permutation scores 0.9860 on test, while the best test-set score over the same
 24 is 0.9930 — that 0.7-point gap is selection leakage, not signal.
 
-## Notebook
+## Standalone notebook (the submission deliverable)
+
+`quantum_walk_features.ipynb` is **fully self-contained** — it imports nothing
+from `qw/` and runs on its own with only numpy, pandas, scikit-learn and
+matplotlib. This is the file to hand in.
+
+```bash
+.venv/bin/jupyter lab quantum_walk_features.ipynb
+```
+
+Put `diabetes.csv`, `data.csv` or `spambase.csv` next to it and set `DATASET` in
+the config cell; with no CSV present it falls back to scikit-learn's built-in
+Breast Cancer Wisconsin so it always runs. Executes end to end in about 15
+seconds and ships with outputs already embedded.
+
+It contains its own physics validation (section 4) standing in for the pytest
+suite: norm preservation, the Hadamard peak, no wraparound, the initial state,
+and coin unitarity. Regenerate it with `python tools/make_standalone_notebook.py`
+(this clears outputs, so re-execute afterwards).
+
+## Package demo notebook
+
 
 `qwalk_demo.ipynb` walks the whole pipeline with plots — position distributions
 per class, the Hadamard sanity check, the results table, and accuracy vs `T`.
