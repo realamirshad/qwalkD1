@@ -207,22 +207,31 @@ print(f"majority-class baseline on test: {max(y_test.mean(), 1 - y_test.mean()):
 C.append(md(r"""
 ## 3. The quantum walk
 
-### Lattice size
+### The lattice grows with the walk
 
-The walker starts at the **centre** of the lattice. After $T$ steps its support
-spans $2T+1$ sites, so the array holds $2T+3$ — two sites of padding. Those
-outermost sites are unreachable in $T$ steps, which means the periodic `np.roll`
-used for the shift can never actually wrap probability around the array.
+The walker starts on a **single site**. Each step the lattice grows by two
+sites: coin $|0\rangle$ keeps its index while coin $|1\rangle$ advances by two,
+which in the frame that gains one site on each side per step is exactly "coin
+$|0\rangle$ moves left, coin $|1\rangle$ moves right".
 
-Getting this wrong is the classic failure mode: start the walker at index 0 and
-probability falls off the edge every step, so $\sum_x P_T(x)$ decays away from 1
-and the simulation stops being unitary.
+After $T$ steps the array is $2T+1$ sites — **exactly the light cone**. The
+physical position of index $j$ is $x = j - T$.
+
+Nothing is padded and nothing is rolled, so probability cannot wrap around the
+array or fall off its end. The alternative — a fixed array with a periodic
+shift — needs padding and a proof that the padding is wide enough; growing the
+lattice removes that class of bug entirely.
+
+> The classic failure mode is starting the walker at index 0 of a fixed array
+> with a non-periodic shift: probability then falls off the edge every step and
+> $\sum_x P_T(x)$ decays away from 1, breaking unitarity and acceptance
+> criterion §20.6.
 """))
 
 C.append(code('''
 def n_positions_for(n_steps):
-    """Lattice size: 2*T + 3, i.e. the light cone plus two padding sites."""
-    return 2 * int(n_steps) + 3
+    """Lattice size after T steps: exactly the light cone, 2*T + 1 sites."""
+    return 2 * int(n_steps) + 1
 
 def position_axis(n_positions):
     """Integer positions x for a lattice of n_positions sites, centred on 0."""
@@ -233,11 +242,16 @@ def coin_operator(alpha, beta):
     return np.array([[np.cos(alpha) * np.exp(1j * beta), np.sin(alpha)],
                      [-np.sin(alpha), np.cos(alpha) * np.exp(-1j * beta)]], dtype=complex)
 
-def run_walk_1d(theta, phi, alpha, beta, n_steps, n_positions=None):
+def run_qw_1d(theta, phi, alpha, beta, n_steps):
     """Run one independent 1D walk per sample, vectorised over samples.
 
-    Returns psi of shape (n_samples, n_positions, 2), where psi[s, x, c] is the
-    amplitude of sample s at lattice index x with coin state c.
+    The lattice starts as one site and grows by two per step, so it is always
+    exactly the light cone: 2*n_steps + 1 sites. Nothing is padded, nothing is
+    rolled, so no probability can wrap or be lost.
+
+    Returns psi of shape (n_samples, 2*n_steps + 1, 2), where psi[s, j, c] is
+    the amplitude of sample s at lattice index j with coin state c. The physical
+    position of index j is x = j - n_steps, which is what position_axis returns.
     """
     theta, phi, alpha, beta = (np.atleast_1d(np.asarray(v, float))
                                for v in (theta, phi, alpha, beta))
@@ -247,15 +261,11 @@ def run_walk_1d(theta, phi, alpha, beta, n_steps, n_positions=None):
         raise ValueError("n_steps must be non-negative")
 
     n_samples = theta.shape[0]
-    n_pos = n_positions_for(n_steps) if n_positions is None else int(n_positions)
-    if n_pos < 2 * n_steps + 1:
-        raise ValueError(f"n_positions={n_pos} too small for {n_steps} steps; would wrap")
-    centre = n_pos // 2
 
-    # |psi_0> = |centre> (x) (cos(theta/2)|0> + e^{i phi} sin(theta/2)|1>)
-    psi = np.zeros((n_samples, n_pos, 2), dtype=np.complex128)
-    psi[:, centre, 0] = np.cos(theta / 2.0)
-    psi[:, centre, 1] = np.exp(1j * phi) * np.sin(theta / 2.0)
+    # |psi_0> = |x=0> (x) (cos(theta/2)|0> + e^{i phi} sin(theta/2)|1>)
+    psi = np.zeros((n_samples, 1, 2), dtype=np.complex128)
+    psi[:, 0, 0] = np.cos(theta / 2.0)
+    psi[:, 0, 1] = np.exp(1j * phi) * np.sin(theta / 2.0)
 
     # C(alpha, beta) as four broadcastable columns, one 2x2 per sample
     cos_a, sin_a = np.cos(alpha)[:, None], np.sin(alpha)[:, None]
@@ -268,10 +278,12 @@ def run_walk_1d(theta, phi, alpha, beta, n_steps, n_positions=None):
         up, down = psi[:, :, 0], psi[:, :, 1]
         coined_up = c00 * up + c01 * down
         coined_down = c10 * up + c11 * down
-        # coin |0> moves left (-1), coin |1> moves right (+1);
-        # padding guarantees the wrapped-in sites carry zero amplitude
-        psi = np.stack((np.roll(coined_up, -1, axis=1),
-                        np.roll(coined_down, 1, axis=1)), axis=-1)
+        # Grow by two sites. Coin |0> keeps its index, coin |1> advances by two;
+        # in the growing frame that is "coin |0> left, coin |1> right".
+        grown = np.zeros((n_samples, psi.shape[1] + 2, 2), dtype=np.complex128)
+        grown[:, :-2, 0] = coined_up
+        grown[:, 2:, 1] = coined_down
+        psi = grown
     return psi
 
 def position_probabilities(psi):
@@ -321,7 +333,10 @@ downstream is meaningful.
 1. **Norm preservation** — $\sum_x P_T(x) = 1$ to within $10^{-10}$, at several $T$.
 2. **Hadamard check** — $\alpha=\pi/4,\ \beta=0,\ \theta=0,\ \phi=0$ at $T=30$
    must put the dominant peak near $x = -0.7T$.
-3. **No wraparound** — probability at the lattice edges stays exactly zero.
+3. **Light cone** — the lattice is exactly $2T+1$ sites, and the amplitudes at
+   its two tips match the closed form for the single path that reaches them.
+   (With a growing lattice there is no periodic shift, so wraparound is
+   impossible by construction; this checks the shift bookkeeping instead.)
 4. **Initial state** and **coin unitarity** — the operators match the spec.
 """))
 
@@ -337,36 +352,43 @@ def run_physics_checks(tol=1e-10, verbose=True):
     # 1. norm preservation
     worst = 0.0
     for T in [0, 1, 2, 5, 15, 30, 50]:
-        psi = run_walk_1d(*_random_params(16, seed=T), T)
+        psi = run_qw_1d(*_random_params(16, seed=T), T)
         worst = max(worst, float(np.abs(position_probabilities(psi).sum(axis=1) - 1).max()))
     results.append(("norm preservation, sum P_T(x) == 1", worst < tol, f"max deviation {worst:.2e}"))
 
     # 2. Hadamard peak near -0.7*T
     T = 30
     z = np.array([0.0])
-    p = position_probabilities(run_walk_1d(z, z, np.array([np.pi / 4]), z, T))[0]
+    p = position_probabilities(run_qw_1d(z, z, np.array([np.pi / 4]), z, T))[0]
     xs = position_axis(p.shape[0])
     peak = xs[np.argmax(p)]
     ok = abs(peak - (-0.7 * T)) <= 0.1 * T and p[xs < 0].sum() > p[xs > 0].sum()
     results.append(("Hadamard peak near x = -0.7*T", ok,
                     f"peak x={peak:.0f}, target {-0.7 * T:.1f}, ballistic {-T / np.sqrt(2):.2f}"))
 
-    # 3. no wraparound
+    # 3. lattice is exactly the light cone, and its tips are analytically right.
+    # The only path to x=+T is T consecutive coin-|1> moves, giving
+    #   psi_right = c11^(T-1) * (c10*u0 + c11*d0);  mirrored for x=-T.
     ok, detail = True, ""
     for T in [1, 5, 30, 60]:
-        pr = position_probabilities(run_walk_1d(*_random_params(8, seed=T + 100), T))
-        xs = position_axis(pr.shape[1])
-        edges_zero = np.all(pr[:, 0] == 0.0) and np.all(pr[:, -1] == 0.0)
-        cone = np.all(pr[:, np.abs(xs) > T] == 0.0)
-        ok &= edges_zero and cone
-        detail = f"edges exactly zero and nothing outside |x| <= T, up to T={T}"
-    results.append(("no wraparound at lattice edges", ok, detail))
+        th, ph, al, be = (np.array([0.7]), np.array([1.3]),
+                          np.array([0.9]), np.array([2.1]))
+        psi = run_qw_1d(th, ph, al, be, T)
+        ok &= psi.shape[1] == 2 * T + 1
+        c = coin_operator(al[0], be[0])
+        u0, d0 = np.cos(th[0] / 2), np.exp(1j * ph[0]) * np.sin(th[0] / 2)
+        right = c[1, 1] ** (T - 1) * (c[1, 0] * u0 + c[1, 1] * d0)
+        left = c[0, 0] ** (T - 1) * (c[0, 0] * u0 + c[0, 1] * d0)
+        ok &= np.isclose(psi[0, -1, 1], right, atol=tol)
+        ok &= np.isclose(psi[0, 0, 0], left, atol=tol)
+        detail = f"length == 2T+1 and both tips analytic, up to T={T}"
+    results.append(("lattice is exactly the light cone", ok, detail))
 
     # 4. initial state
     th = np.array([0.0, np.pi / 2, np.pi])
     ph = np.array([0.0, 0.3, 1.1])
     zs = np.zeros_like(th)
-    psi0 = run_walk_1d(th, ph, zs, zs, 0)
+    psi0 = run_qw_1d(th, ph, zs, zs, 0)
     c = psi0.shape[1] // 2
     ok = (np.allclose(psi0[:, c, 0], np.cos(th / 2), atol=tol)
           and np.allclose(psi0[:, c, 1], np.exp(1j * ph) * np.sin(th / 2), atol=tol)
@@ -400,7 +422,7 @@ not a diffusive Gaussian. Parity restricts support to even sites at even $T$.
 C.append(code(r'''
 T_demo = 30
 z = np.array([0.0])
-p_h = position_probabilities(run_walk_1d(z, z, np.array([np.pi / 4]), z, T_demo))[0]
+p_h = position_probabilities(run_qw_1d(z, z, np.array([np.pi / 4]), z, T_demo))[0]
 x_h = position_axis(p_h.shape[0])
 peak = x_h[np.argmax(p_h)]
 
@@ -412,7 +434,7 @@ axes[0].set_title(f"Hadamard walk, T={T_demo}")
 axes[0].set_xlabel("position $x$"); axes[0].set_ylabel("$P_T(x)$"); axes[0].legend()
 
 for T_i in [5, 15, 30]:
-    p_i = position_probabilities(run_walk_1d(z, z, np.array([np.pi / 4]), z, T_i))[0]
+    p_i = position_probabilities(run_qw_1d(z, z, np.array([np.pi / 4]), z, T_i))[0]
     axes[1].plot(position_axis(p_i.shape[0]), p_i, lw=1.1, label=f"T={T_i}")
 axes[1].set_title("Ballistic spreading with T")
 axes[1].set_xlabel("position $x$"); axes[1].legend()
@@ -498,7 +520,7 @@ class QuantumWalkFeatures(BaseEstimator, TransformerMixin):
     def transform(self, X_):
         """Run the walks and return the extracted features. Returns (n, 10)."""
         p = self.walk_parameters(X_)
-        return extract_features(run_walk_1d(p[:, 0], p[:, 1], p[:, 2], p[:, 3], self.n_steps))
+        return extract_features(run_qw_1d(p[:, 0], p[:, 1], p[:, 2], p[:, 3], self.n_steps))
 
     def get_feature_names_out(self, input_features=None):
         return np.array([f"qw_{i:02d}" for i in range(N_WALK_FEATURES)], dtype=object)
@@ -530,7 +552,7 @@ assert all(p_test[:, i].min() >= lo - 1e-12 and p_test[:, i].max() <= hi + 1e-12
 print("\\ntest rows stay inside every declared range")
 
 norms = position_probabilities(
-    run_walk_1d(params[:, 0], params[:, 1], params[:, 2], params[:, 3], N_STEPS)
+    run_qw_1d(params[:, 0], params[:, 1], params[:, 2], params[:, 3], N_STEPS)
 ).sum(axis=1)
 print(f"norm across all {len(norms)} training walks: "
       f"max deviation from 1 = {np.abs(norms - 1).max():.2e}")
@@ -616,7 +638,7 @@ axes[0].set_title(f"{DATASET}: test performance, T={N_STEPS}")
 axes[0].legend(ncol=4, fontsize=8)
 
 prob_tr = position_probabilities(
-    run_walk_1d(params[:, 0], params[:, 1], params[:, 2], params[:, 3], N_STEPS))
+    run_qw_1d(params[:, 0], params[:, 1], params[:, 2], params[:, 3], N_STEPS))
 xs = position_axis(prob_tr.shape[1])
 for cls, nm in enumerate(CLASS_NAMES):
     axes[1].plot(xs, prob_tr[y_train == cls].mean(axis=0), lw=1.6, label=f"mean, {nm}")
@@ -743,11 +765,12 @@ once per reported number. The single most common way to inflate results here is
 to loop over the 24 permutations and keep the best test score — section 8
 measures exactly how much that would have added.
 
-**On the physics.** The walker starts at the centre of a $2T+3$ site lattice.
-Starting it at index 0 instead makes the shift lose amplitude off the edge every
-step, so $\sum_x P_T(x)$ decays far below 1 and the walk is no longer unitary.
-Section 4 would catch that immediately; it is worth re-running after any change
-to the walk.
+**On the physics.** The lattice grows with the walk and is always exactly the
+light cone, $2T+1$ sites, so no padding is needed and nothing can wrap. The
+classic failure mode is a *fixed* array with a non-periodic shift and the walker
+at index 0: amplitude then falls off the edge every step, $\sum_x P_T(x)$ decays
+far below 1, and the walk stops being unitary. Section 4 catches that
+immediately; re-run it after any change to the walk.
 
 **Scope.** This is the **1D case only** — 4 parameters, one coin. The 2D
 extension (10 parameters, two coins, a $\mu/\chi$ entangled initial state) is

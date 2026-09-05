@@ -10,6 +10,9 @@ Fixed physics (challenge spec -- do not "improve"):
     S: coin |0> moves left, coin |1> moves right
     P_T(x) = sum_c |<x, c | psi_T>|^2
 
+The lattice grows with the walk (``2*T + 1`` sites after ``T`` steps), so it
+is always exactly the light cone: no padding, no periodic shift, no wraparound.
+
 Pure NumPy; one independent walk per dataset row, all rows advanced together
 by vectorising over the leading axis.
 """
@@ -46,13 +49,13 @@ FEATURE_NAMES: tuple[str, ...] = (
 
 
 def n_positions_for(n_steps: int) -> int:
-    """Lattice size used by :func:`run_walk_1d`: ``2*n_steps + 3``.
+    """Lattice size used by :func:`run_qw_1d`: ``2*n_steps + 1``.
 
-    Two sites of padding beyond the ``2*n_steps + 1`` light cone keep the
-    outermost sites unreachable in ``n_steps`` steps, so the periodic shift can
-    never wrap probability around the array.
+    The lattice starts as a single site and grows by two per step, so it is
+    always exactly the light cone. Nothing is padded and nothing is rolled, so
+    probability can neither wrap around the array nor fall off its end.
     """
-    return 2 * int(n_steps) + 3
+    return 2 * int(n_steps) + 1
 
 
 def position_axis(n_positions: int) -> np.ndarray:
@@ -63,19 +66,25 @@ def position_axis(n_positions: int) -> np.ndarray:
 
 # --- BEGIN pasted implementation -------------------------------------------
 # Reference vectorised implementation; replace this block with your own.
-# Contract: run_walk_1d(theta, phi, alpha, beta, n_steps) -> (n_samples, n_positions, 2)
+# Contract: run_qw_1d(theta, phi, alpha, beta, n_steps) -> (n_samples, n_positions, 2)
 #           extract_features(psi) -> (n_samples, 10)
 
 
-def run_walk_1d(
+def run_qw_1d(
     theta: np.ndarray,
     phi: np.ndarray,
     alpha: np.ndarray,
     beta: np.ndarray,
     n_steps: int,
-    n_positions: int | None = None,
 ) -> np.ndarray:
     """Run one independent 1D walk per sample for ``n_steps`` steps.
+
+    The lattice starts as one site and grows by two per step: coin ``|0>``
+    keeps its index while coin ``|1>`` advances by two, which in the frame
+    that gains a site on each side per step is exactly "coin ``|0>`` moves
+    left, coin ``|1>`` moves right". After ``T`` steps the array is
+    ``2*T + 1`` sites -- exactly the light cone -- so no padding is needed and
+    no periodic shift is used.
 
     Args:
         theta: Shape ``(n_samples,)`` initial-coin polar angles.
@@ -83,12 +92,12 @@ def run_walk_1d(
         alpha: Shape ``(n_samples,)`` coin-operator ``a``.
         beta: Shape ``(n_samples,)`` coin-operator ``b``.
         n_steps: Number of walk steps ``T``.
-        n_positions: Lattice size; defaults to :func:`n_positions_for`.
 
     Returns:
-        Complex array ``psi`` of shape ``(n_samples, n_positions, 2)``, where
-        ``psi[s, x, c]`` is the amplitude of sample ``s`` at lattice index ``x``
-        with coin state ``c``.
+        Complex array ``psi`` of shape ``(n_samples, 2*n_steps + 1, 2)``, where
+        ``psi[s, j, c]`` is the amplitude of sample ``s`` at lattice index
+        ``j`` with coin state ``c``. The physical position of index ``j`` is
+        ``x = j - n_steps``, which is what :func:`position_axis` returns.
     """
     theta = np.atleast_1d(np.asarray(theta, dtype=float))
     phi = np.atleast_1d(np.asarray(phi, dtype=float))
@@ -100,18 +109,11 @@ def run_walk_1d(
         raise ValueError("n_steps must be non-negative")
 
     n_samples = theta.shape[0]
-    n_pos = n_positions_for(n_steps) if n_positions is None else int(n_positions)
-    if n_pos < 2 * n_steps + 1:
-        raise ValueError(
-            f"n_positions={n_pos} is too small for {n_steps} steps; "
-            f"probability would wrap around"
-        )
-    centre = n_pos // 2
 
-    # |psi_0> = |centre> (x) (cos(theta/2)|0> + e^{i phi} sin(theta/2)|1>)
-    psi = np.zeros((n_samples, n_pos, 2), dtype=np.complex128)
-    psi[:, centre, 0] = np.cos(theta / 2.0)
-    psi[:, centre, 1] = np.exp(1j * phi) * np.sin(theta / 2.0)
+    # |psi_0> = |x=0> (x) (cos(theta/2)|0> + e^{i phi} sin(theta/2)|1>)
+    psi = np.zeros((n_samples, 1, 2), dtype=np.complex128)
+    psi[:, 0, 0] = np.cos(theta / 2.0)
+    psi[:, 0, 1] = np.exp(1j * phi) * np.sin(theta / 2.0)
 
     # C(alpha, beta), one 2x2 per sample, held as four broadcastable columns.
     cos_a = np.cos(alpha)[:, None]
@@ -125,12 +127,11 @@ def run_walk_1d(
         up, down = psi[:, :, 0], psi[:, :, 1]
         coined_up = c00 * up + c01 * down
         coined_down = c10 * up + c11 * down
-        # Coin |0> moves left (index -1), coin |1> moves right (index +1).
-        # Padding guarantees the wrapped-in sites carry zero amplitude.
-        psi = np.stack(
-            (np.roll(coined_up, -1, axis=1), np.roll(coined_down, 1, axis=1)),
-            axis=-1,
-        )
+        # Grow by two sites; coin |0> keeps its index, coin |1> advances by two.
+        grown = np.zeros((n_samples, psi.shape[1] + 2, 2), dtype=np.complex128)
+        grown[:, :-2, 0] = coined_up
+        grown[:, 2:, 1] = coined_down
+        psi = grown
 
     return psi
 
@@ -183,7 +184,7 @@ def extract_features(psi: np.ndarray) -> np.ndarray:
 def _run(params: np.ndarray, n_steps: int) -> np.ndarray:
     """Adapt the column-matrix calling convention of :class:`WalkSpec`."""
     theta, phi, alpha, beta = (params[:, i] for i in range(4))
-    return run_walk_1d(theta, phi, alpha, beta, n_steps)
+    return run_qw_1d(theta, phi, alpha, beta, n_steps)
 
 
 WALK_1D = WalkSpec(

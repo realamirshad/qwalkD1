@@ -1,5 +1,17 @@
 # qwalk — quantum walk feature expansion
 
+## The challenge
+
+The reference brief is [`docs/PQO-2026-06-challenge.pdf`](docs/PQO-2026-06-challenge.pdf)
+(PolyHaq Quantum Hackathon, Persian). [`docs/CHALLENGE.md`](docs/CHALLENGE.md)
+is an English transcription of its requirements, scoring and acceptance
+criteria; [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md) tracks what this repo
+currently satisfies and what is still missing.
+
+**Status: roughly 60/100.** The 1D walk, feature selection and mapping, the four
+spaces, and the `T` study are complete. The 2D walk is not implemented — that is
+20 points directly plus 10 more it gates.
+
 A discrete-time quantum walk used as a feature expansion for binary
 classification, compared against classical baselines on Breast Cancer
 Wisconsin. Pure NumPy state-vector simulation — no Qiskit, no Pennylane.
@@ -73,7 +85,6 @@ and coin unitarity. Regenerate it with `python tools/make_standalone_notebook.py
 
 ## Package demo notebook
 
-
 `qwalk_demo.ipynb` walks the whole pipeline with plots — position distributions
 per class, the Hadamard sanity check, the results table, and accuracy vs `T`.
 It imports the `qw` package rather than restating it, so it cannot drift from
@@ -123,23 +134,23 @@ P_T(x)      = sum_c |<x, c | psi_T>|^2
 Parameter ranges: `theta in [0, pi]`, `phi in [0, 2pi]`, `alpha in [0, pi/2]`,
 `beta in [0, 2pi]`.
 
-The lattice holds `2T+3` sites, two more than the `2T+1` light cone, so the
-periodic shift can never wrap probability around the array. Position `x=0` is
-the centre index.
+The lattice grows with the walk: it starts as a single site and gains two per
+step, so after `T` steps it is exactly the `2T+1` light cone. No padding and
+no periodic shift, so probability can neither wrap nor fall off the end.
 
 ## Layout
 
-| file | role |
-| --- | --- |
-| `qw/config.py` | `ExperimentConfig` — seed, T, selector, model, permutation, degree. The only place these live. |
-| `qw/walkspec.py` | `WalkSpec` — the 1D/2D seam: parameter names, ranges, `run`, `extract`. |
-| `qw/walk1d.py` | `run_walk_1d` and `extract_features`, exported as `WALK_1D`. |
-| `qw/registry.py` | `WALKS` — where a new variant is wired in. |
-| `qw/data.py` | Breast Cancer Wisconsin, one stratified split. |
-| `qw/selection.py` | Pluggable selectors returning exactly `k` indices. |
-| `qw/mapping.py` | `QuantumWalkFeatures` — select, scale, permute, walk, extract. |
-| `qw/spaces.py` | The four feature spaces as transformers. |
-| `qw/evaluate.py` | One `evaluate_space` used for all four. |
+| file              | role                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `qw/config.py`    | `ExperimentConfig` — seed, T, selector, model, permutation, degree. The only place these live. |
+| `qw/walkspec.py`  | `WalkSpec` — the 1D/2D seam: parameter names, ranges, `run`, `extract`.                        |
+| `qw/walk1d.py`    | `run_qw_1d` and `extract_features`, exported as `WALK_1D`.                                     |
+| `qw/registry.py`  | `WALKS` — where a new variant is wired in.                                                     |
+| `qw/data.py`      | Breast Cancer Wisconsin, one stratified split.                                                 |
+| `qw/selection.py` | Pluggable selectors returning exactly `k` indices.                                             |
+| `qw/mapping.py`   | `QuantumWalkFeatures` — select, scale, permute, walk, extract.                                 |
+| `qw/spaces.py`    | The four feature spaces as transformers.                                                       |
+| `qw/evaluate.py`  | One `evaluate_space` used for all four.                                                        |
 
 ### No test-set leakage
 
